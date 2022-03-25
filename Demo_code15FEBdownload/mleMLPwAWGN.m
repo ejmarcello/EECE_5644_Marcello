@@ -26,17 +26,19 @@ paramsTrue.A = 0.3*rand(nPerceptrons,nX)
 paramsTrue.b = 0.3*rand(nPerceptrons,1);
 paramsTrue.C = 0.3*rand(nY,nPerceptrons);
 paramsTrue.d = 0.3*rand(nY,1);
-Y = mlpModel(X,paramsTrue)+1e-10*randn(nY,N);
+Y = mlpModel(X,paramsTrue)+1e-1*randn(nY,N);
 vecParamsTrue = [paramsTrue.A(:);paramsTrue.b;paramsTrue.C(:);paramsTrue.d];
 figure(1), clf, plot3(X(1,:),X(2,:),Y(1,:),'.g');
 
-% Initialize model parameters
-params.A = paramsTrue.A+1e-10*randn(nPerceptrons,nX);
+% Initialize model parameters (a 2 layer neural network example)
+% usually you wouldn't know the true params, but this tests to see if it
+% will work if you initialize close to the true params.
+params.A = paramsTrue.A+1e-10*randn(nPerceptrons,nX); % Can optionally zero these out
 params.b = paramsTrue.b+1e-10*randn(nPerceptrons,1);
 params.C = paramsTrue.C+1e-10*randn(nY,nPerceptrons);
 params.d = mean(Y,2);%zeros(nY,1); % initialize to mean of y
 %params = paramsTrue;
-vecParamsInit = [params.A(:);params.b;params.C(:);params.d];
+vecParamsInit = [params.A(:);params.b;params.C(:);params.d]; % vectorize the parameters
 %vecParamsInit = vecParamsTrue; % Override init weights with true weights
 
 % Optimize model
@@ -63,7 +65,7 @@ figure(1), hold on, plot3(X(1,:),X(2,:),H(1,:),'.r');
 xlabel('X_1'), ylabel('X_2'), zlabel('Y and H'),
 [vecParamsTrue,vecParamsInit,vecParamsFinal]
 keyboard,
-
+end
 %%%
 function objFncValue = objectiveFunction(X,Y,sizeParams,vecParams)
 N = size(X,2); % number of samples
@@ -78,6 +80,7 @@ H = mlpModel(X,params);
 % Change the objective function appropriately
 objFncValue = sum(sum((Y-H).*(Y-H),1),2)/N; % MSE for regression under AWGN model
 %objFncValue = sum(-sum(Y.*log(H),1),2)/N; % CrossEntropy for ClassPosterior approximation
+end
 
 %%%
 function H = mlpModel(X,params)
@@ -90,13 +93,15 @@ H = V; % linear output layer activations
 %H = exp(V)./repmat(sum(exp(V),1),nY,1); % softmax nonlinearity for second/last layer
 % Activate the softmax function to make this MLP a model for class posteriors
 %
+end
+
 function out = activationFunction(in)
 % Pick a shared nonlinearity for all perceptrons: sigmoid or ramp style...
 % You can mix and match nonlinearities in the model.
 % However, typically this is not done; identical nonlinearity functions
 % are better suited for parallelization of the implementation.
-%out = 1./(1+exp(-in)); % Logistic function - sigmoid style nonlinearity
-out = in./sqrt(1+in.^2); % ISRU - sigmoid style nonlinearity
-
+out = 1./(1+exp(-in)); % Logistic function - sigmoid style nonlinearity
+%out = in./sqrt(1+in.^2); % ISRU - sigmoid style nonlinearity
+end
 
 
