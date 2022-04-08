@@ -77,12 +77,15 @@ clear x1 x2 x3 x4;
 % save('A3Q1Dataset');
 
 %% Classification with True Data PDF (benchmark)
+clear all; close all;
 
 % load in data 
 load('A3Q1Dataset.mat');
-x = dataset(5).x; % choose dataset 5 (2000 samples)
-labels = dataset(5).labels;
-N = N(5); % number of data samples
+dsn = 3; % choose dataset number
+x = dataset(dsn).x; % choose dataset D (xxxx samples)
+labels = dataset(dsn).labels;
+N = N(dsn); % number of data samples
+
 %%%%% MAP Classification rule with true data PDF %%%%%
 % gmmnum is the number of the gaussian in the mixture model.
 for gmmnum = 1:length(gmmParameters.meanVectors(1,:))
@@ -100,150 +103,95 @@ expectedRisks = lossMatrix*classPosteriors; % Expected Risk for each label (rows
 % Find empirically estimated probability of error
 pError = sum(length(find(labels~=decisions)))/N;
 
-%% Creating the MLP to estimate the class posterior probabilities
-% Only one hidden layer, one output layer
-% Size of MLP
-p = 5; n = 3; 
+%% Creating the MLP to classify data (estimates class posterior probabilities)
+% Continues straight from "(benchmark)" section
+
+% First get the test data (this is used to check for accuracy later)
+XTest = dataset(7).x'; % these are both transposed to work with deep learning tools
+YTest = dataset(7).labels';
+% NOW Setup the data for cross-validation by partitioning.
+XTrain = x'; % network input features
+YTrain = categorical(labels'); % network output responses (classes)
+idx = randperm(size(XTrain,1),N); % mix up the data 
+XTrain = XTrain(idx,:);
+YTrain = YTrain(idx); % now data is randomly mixed around. Ready to partition.
+
+% K-fold cross validation. Determines number of attempts/data partitions.
+K = 10;
+% Structure of MLP: Only one hidden layer, one output layer
+p = round(logspace(0,3,10)); n = size(XTest,2); 
 % size of output... equal to number of classes
 C = 4;
+for m = 1:length(p)
+    for i = 1:K
+        % if bootstrapping is desired, then ...
+        % can sample with replacement using randi(N,1,K). This does sample
+        % without replacement using randperm(N,K)
+    XValidation = XTrain(idx,:); % now that data is transposed, sample like this
+    XTrain(idx,:) = []; % removes validation samples from train data.
+    YValidation = YTrain(idx);
+    YTrain(idx) = [];
 
-% START: data.X is data and data.d is true class posteriors
-data.X = x; data.d = classPosteriors; % +1e-2*randn(C,N); % can add some random noise on top
-% Randomly initialize parameter estimates for C outputs. Results of MLP will be
-% posterior probabilities (using softmax @ the output layer)
-% just replace C with 1 to get single output again.
-theta.b2 = rand(C,1); theta.W2 = rand(C,p); theta.b1 = rand(p,1); theta.W1 = rand(p,n);
+    % Randomly initialize parameter estimates for C outputs. Results of MLP will be
+    % posterior probabilities (using softmax @ the output layer)
+    randscale = 0.5; % arbitrarily chosen scaling factor to bring initialized parameters closer to zero.
+    theta.b2 = randscale*rand(C,1); theta.W2 = randscale*rand(C,p); % output layer params
+    theta.b1 = randscale*rand(p,1); theta.W1 = randscale*rand(p,n); % 1st hidden layer params
 
-% Initialize model to the vicinity of the true MLP (wish I could do this)
-%jitter = 5e-1; theta.b2 = ttrue.b2+jitter*randn; theta.W2 = ttrue.W2+jitter*randn(1,p); theta.b1 = ttrue.b1+jitter*randn(p,1); theta.W1 = ttrue.W1+jitter*rand(p,n);
+    %%%%%--- Deep Learning Toolbox, create custom MLP ---%%%%%
+    % Can use Deep Learning Toolbox to build a custom MLP.
+    % uses function trainNetwork() to train data. Since this is a
+    % classification problem, I will use data as Nxn matrix input with
+    % 'responses' being an Nx1 vector of true class labels. The network will be
+    % defined by the layer array 'layers' containing fullyConnected layers and
+    % softplus (smooth ReLU) activation function followed by softmax at the
+    % output. Finally a classification is given at the output using a
+    % classification layer that minimizes cross entropy loss.
 
-% Train the MLP with SGD starting from specified initial weights
-theta = trainmlp(data,theta);
 
-%%%
-% Below, I am assuming that at each iteration we use a single-sample based
-% stochastic gradient; will generalize to larger batches later...
-function theta = trainmlp(data,theta)
-[n,N] = size(data.X);
-E = 2; % number of epochs(must be a positive integer)
-T = E*N;
-t = 0; 
-%i = randi(N,1,T); % sample with replacement
-i = []; for k = 1:E, i = [i,randperm(N)]; end %Follow random ordering in each epoch
-while t <= T
-    t = t + 1;
-    eta = 1e-1/(1+1e-3*t); % reduce step size to asymptotically eliminate residual jitter due to stochastic updates
-    xt = data.X(:,i(t)); dt = data.d(1,i(t)); % choose a sample randomly
-    [e2t,ge2t] = sqerr(xt,dt,theta,[1,1]);
-    figure(1), 
-    subplot(1,2,1), plot(t,e2t,'.'), xlim([0,T]), xlabel('Iterations'), ylabel('Instantaneous Squared Error'), hold on, drawnow,
-    subplot(1,2,2), semilogy(t,e2t,'.'), xlim([0,T]), xlabel('Iterations'), ylabel('Instantaneous Squared Error'), hold on, drawnow,
-    theta.b2 = theta.b2 - eta*ge2t.b2;
-    theta.W2 = theta.W2 - eta*ge2t.W2;
-    theta.b1 = theta.b1 - eta*ge2t.b1;
-    theta.W1 = theta.W1 - eta*ge2t.W1;
-end
-end
+    %%% now to build the network layers %%%
+    layer_fc1 = fullyConnectedLayer(p,'Name','fc1','Weights',theta.W1,...
+                    'Bias',theta.b1); % with p neurons and
+    % weights must be specified by px{inputsize} matrix.
+    layer_fc2 = fullyConnectedLayer(C,'Name','fc2','Weights',theta.W2,...
+                    'Bias',theta.b2); % with C neurons for class outputs
+    layers = [...
+              featureInputLayer(n)
+              layer_fc1
+              softplusLayer
+              layer_fc2
+              softmaxLayer 
+              classificationLayer]; % Using the classification Layer "hides" 
+      % the posterior probabilities, but classifies the samples using minimum
+      % cross entropy loss which is what I need.
 
-%%%
-% Below, I am assuming that at each iteration we use a single-sample based
-% stochastic gradient; will generalize to larger batches later...
-function [e2,ge2] = sqerr(x,d,theta,flag)
-if flag(1) | flag(2)
-	[y,gy] = mlp(x,theta,flag);
-    e = (d - y);
-    if flag(1)
-        e2 = e.^2;
-    end
-    if flag(2)
-        ge2.b2 = -2*norm(e,2)*gy.b2; % chain rule (d-y)^2 -> 2*e*(-gy.b2)
-        ge2.W2 = -2*norm(e,2)*gy.W2';
-        ge2.b1 = -2*norm(e,2)*gy.b1;
-        ge2.W1 = -2*norm(e,2)*gy.W1;
-    else
-        ge2 = NaN;
-    end
-end
-end
+    %%% specify the training options %%%
+    initialLearnRate = 0.5;
+    maxEpochs = 8;
+    miniBatchSize = 64;
+    validationFrequency = 20;
+    % uses stochastic gradient with momentum solver... but set momentum to 0.
+    options = trainingOptions("sgdm", ...
+        InitialLearnRate=initialLearnRate, ...
+        MaxEpochs=maxEpochs, ...
+        MiniBatchSize=miniBatchSize, ...
+        Momentum=0, ...
+        ValidationData={XValidation,YValidation}, ...
+        ValidationFrequency=validationFrequency, ...
+        Verbose=false);%, ...
+    %     Plots="training-progress");
 
-%%%
-function [H,gy] = mlp(x,theta,flag)
-% Single hidden layer and one output layer MLP
-% flag argument determines if function should fetch the gradient as well.
-% altered to include softmax at the output to model class posteriors (H)
-[n,N] = size(x); m = length(theta.b1); P = m; % P is number of perceptrons
-if flag(1) | flag(2)
-    % send data through the MLP
-	l = theta.W1*x + theta.b1*ones(1,N);   % first linear layer, result PxN
-	[f,gf] = sigmoid(l);  % first nonlinear layer, result [PxN,PxN]
-	y = theta.W2*f + theta.b2*ones(1,N);    % output layer, result 1xN
-	if flag(2)
-        % calculate gradients
-        gy.b2 = ones(1,N); % This is partial deriv. w.r.t b2 (the output bias)
-        gy.W2 = f; % already has N columns in it
-%         gy.b1 = repmat(gy.W2,1,N).*gf; % don't think I neet repmat here. Also chain rule derivative
-        gy.b1 = gy.W2.*gf;
-        gy.W1 = zeros(m,n,N);
-        for j = 1:N % bad for loop that needs to be eliminated
-            gy.W1(:,:,j) = gy.b1(:,j)*x(:,j)'; % chain rule derivative
-        end
-        % Alternative Outer Product Calculation for gy.W1 ... 
-%         outer = kron(gy.b1,x); % kronecker tensor product of PxN and nxN sized matricies
-%         res = outer(:,1:N+1:N*N); % just take relevant columns to get a P*nxN matrix
-%         for j = 1:N
-%             gy.W1(:,:,j) = vec2mtx(res(:,j),P,n); % turn the P*nxN to a PxnxN
-%                 %  uses another for loop inside, runs array assignment P times.
-%         end
-    else
-        gy = NaN;
-    end
-    H = exp(y)./sum(exp(y),1); % softmax nonlinearity for second/last layer
-    % Activate the softmax function to make this MLP a model for class posteriors
-end
+    % Train the network
+    net(m,i) = trainNetwork(XTrain,YTrain,layers,options);
+    YPred = classify(net(m,i),XValidation,'MiniBatchSize',miniBatchSize);
+    error(m,i) = sum(YPred == YValidation)/numel(YValidation);
 end
 
-%%%
-function [s,gs] = sigmoid(ksi)
-s = 1./(1+exp(-ksi));
-gs = s.*(1-s); % derivative
 end
-% use this instead of sigmoid for activation function
-function [s,gs] = softplus(x)
-s = log(1 + exp(x));
-gs = 1./(1 + exp(-x)); % this is the same thing as the sigmoid
-end
+%XTest and YTest already defined at top of section.
+YPred = classify(net,XTest,'MiniBatchSize',miniBatchSize);
 
-function mtx = vec2mtx(vec,P,n)
-% Takes in vertical vector vec 1xP*n and turns it into a Pxn matrix
-mtx = zeros(P,n);
-for c = 1:n:P*n-n+1
-    mtx((c-1)/n+1,:) = vec(c:c+n-1)';
-end
-end
+accuracy = sum(YPred == categorical(YTest))/numel(YTest)
 
-%% Creating an MLP with P perceptrons
-% 
-% data.x = x;
-% data.labels = labels;
-% n = size(data.x,1);
-% P = 10; % number of perceptrons for the hidden layer could maybe be a vector
-%             % to represent multiple layers... [10 5 4]
-% % Randomly initialize parameter estimates
-% theta.b2 = rand;  % bias term
-% theta.w2 = rand(1,P); 
-% theta.b1 = rand(P,1); % bias term
-% theta.w1 = rand(P,n);
-% 
-% function out = mlp(data,theta,P)
-% % MLP.m is a function that creates a Multi Layer Perceptron network
-% %   also known as a feedforward neural network.
-% %   Inputs:
-% %     data - The input data
-% %     theta - The input parameters as a structure containing fields
-% %       theta.w and theta.b
-% %     P = Pnum;
-%     
-% end
-
-
+% TODO: figure out how to implement cross validation on this^
 
