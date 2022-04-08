@@ -3,6 +3,10 @@
 % Regression is just estimating some relationship between dependent
 % variables (function output, vertical axis) and independent variables (horiz axis)
 %
+
+% Deep learning toolbox has much better, more robust, and adaptable tools
+% to use for NN construction and training. See Assignment 3.
+
 % Ethan Marcello
 % From: https://www.mathworks.com/help/thingspeak/create-and-train-a-feedforward-neural-network.html
 %
