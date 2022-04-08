@@ -119,7 +119,9 @@ YTrain = YTrain(idx); % now data is randomly mixed around. Ready to partition.
 % K-fold cross validation. Determines number of attempts/data partitions.
 K = 10;
 % Structure of MLP: Only one hidden layer, one output layer
-p = round(logspace(0,3,10)); n = size(XTest,2); 
+% p = round(logspace(0,3,10)); 
+p = round(linspace(2,15,14));
+n = size(XTest,2); 
 % size of output... equal to number of classes
 C = 4;
 for m = 1:length(p)
@@ -127,16 +129,21 @@ for m = 1:length(p)
         % if bootstrapping is desired, then ...
         % can sample with replacement using randi(N,1,K). This does sample
         % without replacement using randperm(N,K)
-    XValidation = XTrain(idx,:); % now that data is transposed, sample like this
-    XTrain(idx,:) = []; % removes validation samples from train data.
-    YValidation = YTrain(idx);
-    YTrain(idx) = [];
+    %%-- Select Validation and Test Data for run i --%%
+    idxvs = ((i-1)*(N/K)+1); idxve = idxvs+(N/K)-1;
+    idxv = idxvs:idxve; % validation indices (idx) from start to end
+    XTraini = XTrain;
+    YTraini = YTrain;
+    XValidation = XTrain(idxv,:); % now that data is transposed, sample like this
+    XTraini(idxv,:) = []; % removes validation samples from train data.
+    YValidation = YTrain(idxv);
+    YTraini(idxv) = [];
 
     % Randomly initialize parameter estimates for C outputs. Results of MLP will be
     % posterior probabilities (using softmax @ the output layer)
     randscale = 0.5; % arbitrarily chosen scaling factor to bring initialized parameters closer to zero.
-    theta.b2 = randscale*rand(C,1); theta.W2 = randscale*rand(C,p); % output layer params
-    theta.b1 = randscale*rand(p,1); theta.W1 = randscale*rand(p,n); % 1st hidden layer params
+    theta.b2 = randscale*rand(C,1); theta.W2 = randscale*rand(C,p(m)); % output layer params
+    theta.b1 = randscale*rand(p(m),1); theta.W1 = randscale*rand(p(m),n); % 1st hidden layer params
 
     %%%%%--- Deep Learning Toolbox, create custom MLP ---%%%%%
     % Can use Deep Learning Toolbox to build a custom MLP.
@@ -150,7 +157,7 @@ for m = 1:length(p)
 
 
     %%% now to build the network layers %%%
-    layer_fc1 = fullyConnectedLayer(p,'Name','fc1','Weights',theta.W1,...
+    layer_fc1 = fullyConnectedLayer(p(m),'Name','fc1','Weights',theta.W1,...
                     'Bias',theta.b1); % with p neurons and
     % weights must be specified by px{inputsize} matrix.
     layer_fc2 = fullyConnectedLayer(C,'Name','fc2','Weights',theta.W2,...
@@ -167,7 +174,7 @@ for m = 1:length(p)
 
     %%% specify the training options %%%
     initialLearnRate = 0.5;
-    maxEpochs = 8;
+    maxEpochs = 12;
     miniBatchSize = 64;
     validationFrequency = 20;
     % uses stochastic gradient with momentum solver... but set momentum to 0.
@@ -178,20 +185,51 @@ for m = 1:length(p)
         Momentum=0, ...
         ValidationData={XValidation,YValidation}, ...
         ValidationFrequency=validationFrequency, ...
-        Verbose=false);%, ...
-    %     Plots="training-progress");
+        Verbose=false, ...
+        Plots='none');
+%         Plots="training-progress");
 
     % Train the network
-    net(m,i) = trainNetwork(XTrain,YTrain,layers,options);
-    YPred = classify(net(m,i),XValidation,'MiniBatchSize',miniBatchSize);
-    error(m,i) = sum(YPred == YValidation)/numel(YValidation);
+    net = trainNetwork(XTraini,YTraini,layers,options);
+    % calculate error metric
+    YPred = classify(net,XValidation,'MiniBatchSize',miniBatchSize);
+    error_mi(m,i) = 1 - (sum(YPred == YValidation)/numel(YValidation));
+    end
+    % Calculate the average error for each model m here.
+    error = sum(error_mi,2)./K; % yields a vector sample-able by 'm'
 end
 
-end
+% Now choose 'least rejectable' model
+[~,mstar] = min(error);
+% Retrain model using mstar on all training data
+% First randomly initialize weights with mstar
+theta.b2 = randscale*rand(C,1); theta.W2 = randscale*rand(C,p(mstar)); % output layer params
+theta.b1 = randscale*rand(p(mstar),1); theta.W1 = randscale*rand(p(mstar),n); % 1st hidden layer params
+%%% now to build the network layers %%%
+layer_fc1 = fullyConnectedLayer(p(mstar),'Name','fc1','Weights',theta.W1,...
+                'Bias',theta.b1); % with p neurons and
+% weights must be specified by px{inputsize} matrix.
+layer_fc2 = fullyConnectedLayer(C,'Name','fc2','Weights',theta.W2,...
+                'Bias',theta.b2); % with C neurons for class outputs
+layers = [...
+          featureInputLayer(n)
+          layer_fc1
+          softplusLayer
+          layer_fc2
+          softmaxLayer 
+          classificationLayer];  
+% uses stochastic gradient with momentum solver... but set momentum to 0.
+options = trainingOptions("sgdm", ...
+    InitialLearnRate=initialLearnRate, ...
+    MaxEpochs=maxEpochs, ...
+    MiniBatchSize=miniBatchSize, ...
+    Momentum=0, ...
+    Verbose=true, ...
+    Plots='training-progress'); % no validation included, show training progress
+
+net_fin = trainNetwork(XTrain,YTrain,layers,options); % final network
 %XTest and YTest already defined at top of section.
-YPred = classify(net,XTest,'MiniBatchSize',miniBatchSize);
-
-accuracy = sum(YPred == categorical(YTest))/numel(YTest)
-
-% TODO: figure out how to implement cross validation on this^
+YPred = classify(net_fin,XTest,'MiniBatchSize',miniBatchSize);
+% 
+error_fin = 1 - (sum(YPred == categorical(YTest))/numel(YTest)) % final error
 
