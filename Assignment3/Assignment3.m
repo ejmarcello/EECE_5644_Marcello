@@ -76,20 +76,22 @@ clear x1 x2 x3 x4;
 % Save this dataset to use for later.
 % save('A3Q1Dataset');
 
-%% Classification with True Data PDF (benchmark)
-clear all; close all;
+%% Run Theoretical classifier for Question 1
+%clear all; close all;
 
 % load in data 
-load('A3Q1Dataset.mat');
-dsn = 3; % choose dataset number
-x = dataset(dsn).x; % choose dataset D (xxxx samples)
-labels = dataset(dsn).labels;
-N = N(dsn); % number of data samples
+load("A3Q1Dataset.mat");
+N_vector = N;
 
+x = dataset(7).x; % these are both transposed to work with deep learning tools
+labels = dataset(7).labels;
+N = N_vector(7);
+
+%%% Classification with True Data PDF (benchmark)
 %%%%% MAP Classification rule with true data PDF %%%%%
 % gmmnum is the number of the gaussian in the mixture model.
 for gmmnum = 1:length(gmmParameters.meanVectors(1,:))
-    pxgivenl(gmmnum,:) = evalGaussianPDF(x(:,:,1),gmmParameters.meanVectors(:,gmmnum),gmmParameters.covMatrices(:,:,gmmnum)); % Evaluate p(x|L=GMM_number)
+    pxgivenl(gmmnum,:) = evalGaussianPDF(x,gmmParameters.meanVectors(:,gmmnum),gmmParameters.covMatrices(:,:,gmmnum)); % Evaluate p(x|L=GMM_number)
 end
 
 px = gmmParameters.priors*pxgivenl; % Total probability theorem
@@ -102,9 +104,17 @@ expectedRisks = lossMatrix*classPosteriors; % Expected Risk for each label (rows
 
 % Find empirically estimated probability of error
 pError = sum(length(find(labels~=decisions)))/N;
-
-%% Creating the MLP to classify data (estimates class posterior probabilities)
+clear x labels;
+%% Creating the MLP to classify data 
 % Continues straight from "(benchmark)" section
+
+numTest = 10; % # of final MLP iterations w/ test data to ensure maximum performance.
+for dsn = 1:6 % for each dataset
+    
+% dsn = 3; % choose dataset number
+x = dataset(dsn).x; % choose dataset D (xxxx samples)
+labels = dataset(dsn).labels;
+N = N_vector(dsn); % number of data samples
 
 % First get the test data (this is used to check for accuracy later)
 XTest = dataset(7).x'; % these are both transposed to work with deep learning tools
@@ -200,7 +210,9 @@ for m = 1:length(p)
 end
 
 % Now choose 'least rejectable' model
-[~,mstar] = min(error);
+[~,mstar] = min(error); pstar = p(mstar);
+% Train this model 10 times with random initializations and take the best result.
+for i = 1:numTest % test it numTest times and take best performing network.
 % Retrain model using mstar on all training data
 % First randomly initialize weights with mstar
 theta.b2 = randscale*rand(C,1); theta.W2 = randscale*rand(C,p(mstar)); % output layer params
@@ -224,12 +236,43 @@ options = trainingOptions("sgdm", ...
     MaxEpochs=maxEpochs, ...
     MiniBatchSize=miniBatchSize, ...
     Momentum=0, ...
-    Verbose=true, ...
-    Plots='training-progress'); % no validation included, show training progress
+    Verbose=false, ...
+    Plots='none'); % no validation included, don't show training-progress
 
-net_fin = trainNetwork(XTrain,YTrain,layers,options); % final network
+model(i).net = trainNetwork(XTrain,YTrain,layers,options); % final network
 %XTest and YTest already defined at top of section.
-YPred = classify(net_fin,XTest,'MiniBatchSize',miniBatchSize);
+YPred = classify(model(i).net,XTest,'MiniBatchSize',miniBatchSize);
 % 
-error_fin = 1 - (sum(YPred == categorical(YTest))/numel(YTest)) % final error
+model_errors(i) = 1 - (sum(YPred == categorical(YTest))/numel(YTest)); % final error
+end
 
+[besterr(dsn),bestidx] = min(model_errors);
+bestmodel(dsn).net = model(bestidx).net; % saving the best network structure based on data in dsn
+numPerceptrons(dsn) = pstar;
+clear pxgivenl classPosteriors px expectedRisks decisions error_mi ...
+    error model model_errors 
+end
+
+%% Plotting final results
+
+figure;
+semilogx(N_vector(1:6),pError*ones(1,6),'r-','LineWidth',1.5);
+hold on
+semilogx(N_vector(1:6),besterr,'k-','LineWidth',1.5);
+xlabel('Number of Samples'); ylabel('Error');
+title('Empirically Estimated Classification Errors');
+legend('Theoretical Optimum','MLP Trained Optimum');
+grid on
+axis([100 10000 0.1 0.35]);
+ax = gca;
+ax.FontSize = 18;
+% Model trained with cross validation and then network was 
+
+figure;
+semilogx(N_vector(1:6),numPerceptrons,'*','MarkerSize',12,'LineWidth',1.5);
+xlabel('Number of Samples'); ylabel('Number of Perceptrons');
+title('Optimal Number of Perceptrons Used vs. Sample Size');
+grid on
+ax = gca;
+ax.FontSize = 18;
+ax.YTick = 5:15;
