@@ -77,13 +77,13 @@ clear x1 x2 x3 x4;
 % save('A3Q1Dataset');
 
 %% Run Theoretical classifier for Question 1
-%clear all; close all;
+%clear all; close all
 
 % load in data 
 load("A3Q1Dataset.mat");
 N_vector = N;
 
-x = dataset(7).x; % these are both transposed to work with deep learning tools
+x = dataset(7).x; 
 labels = dataset(7).labels;
 N = N_vector(7);
 
@@ -206,7 +206,7 @@ for m = 1:length(p)
     error_mi(m,i) = 1 - (sum(YPred == YValidation)/numel(YValidation));
     end
     % Calculate the average error for each model m here.
-    error = sum(error_mi,2)./K; % yields a vector sample-able by 'm'
+    error = sum(error_mi,2)./K; % yields a 14x1 vector sample-able by 'm'
 end
 
 % Now choose 'least rejectable' model
@@ -253,7 +253,7 @@ clear pxgivenl classPosteriors px expectedRisks decisions error_mi ...
     error model model_errors 
 end
 
-%% Plotting final results
+%% Plotting final results for Question 1
 
 figure;
 semilogx(N_vector(1:6),pError*ones(1,6),'r-','LineWidth',1.5);
@@ -276,3 +276,90 @@ grid on
 ax = gca;
 ax.FontSize = 18;
 ax.YTick = 5:15;
+
+
+%% BEGIN QUESTION 2 HERE
+
+% Create data
+% reusing code I wrote for Assignment 1 question 2.
+clear all; close all;
+
+% Setup: create samples based on data distribution & keep track of
+% class labels.
+N = [100 200 500 1000 2000 5000 100000]; % numbers of samples for ith dataset
+n = 3; % dimensionality of the data vector
+sep = 1.25; % Data mean separation parameter
+C = 4; % Number of classes
+gmmParameters.priors = [0.25 0.25 0.25 0.25]; % equal priors
+% Construct data means by placing them on the corners of a cube
+m1 = zeros(n,1); % mean vector for C=1. Length is same as n
+m2 = [sep 0 0]'; % mean vector for C=2
+m3 = [0 sep 0]'; % mean vector for C=3
+m4 = [0 0 sep]'; % mean vector for C=4
+gmmParameters.meanVectors = [m1 m2 m3 m4];
+
+% Now calculate Covariance matricies.
+A1 = rand(n,n);
+A2 = rand(n,n);
+A3 = rand(n,n);
+A4 = rand(n,n);
+s1 = rand()*0.3;
+s2 = rand()*0.3;
+s3 = rand()*0.3;
+s4 = rand()*0.3;
+%Sigma = (I+sA)(I+sA)' with 0<s<<1
+Cov1 = 0.2.*(eye(3)+s1.*A1)*(eye(3)+s1.*A1)';
+Cov2 = 0.2.*(eye(3)+s2.*A2)*(eye(3)+s2.*A2)';
+Cov3 = 0.2.*(eye(3)+s3.*A3)*(eye(3)+s3.*A3)';
+Cov4 = 0.2.*(eye(3)+s4.*A4)*(eye(3)+s4.*A4)';
+gmmParameters.covMatrices(:,:,1) = Cov1;
+gmmParameters.covMatrices(:,:,2) = Cov2;
+gmmParameters.covMatrices(:,:,3) = Cov3;
+gmmParameters.covMatrices(:,:,4) = Cov4;
+clear A1 A2 A3 A4 s1 s2 s3 s4;
+
+for i = 1:length(N)
+      % Using class priors to generate data x
+    x1 = randGaussian(N(i)*0.25,m1,Cov1); % C=1 data, Uses randGaussian function
+    x1(:,:,2) = ones(n,N(i)*0.25); % Add label to 3rd dimension of mtx
+    x2 = randGaussian(N(i)*0.25,m2,Cov2); % C=2 data, Uses randGaussian function
+    x2(:,:,2) = 2.*ones(n,N(i)*0.25); % Add label to 3rd dimension
+    x3 = randGaussian(N(i)*0.25,m3,Cov3); % C=3 data, first gaussian model
+    x3(:,:,2) = 3.*ones(n,N(i)*0.25); % Add label to 3rd dimension
+    x4 = randGaussian(N(i)*0.25,m4,Cov4); % C=3 data, second gaussian model
+    x4(:,:,2) = 4.*ones(n,N(i)*0.25); % Add label to 3rd dimension
+
+    x = [x1(:,:,:) x2(:,:,:) x3(:,:,:) x4(:,:,:)]; 
+    % We know all C=1 data is in x1 and all C=2 data is in x2, etc.
+    labels = x(1,:,2);
+    x = x(:,:,1);
+    dataset(i).x = x;
+    dataset(i).labels = labels;
+end
+
+clear m1 m2 m3 m4 Cov1 Cov2 Cov3 Cov4;
+
+% Plot data in 3D to see level of overlap
+figure;
+plot3(x1(1,:)',x1(2,:)',x1(3,:)','r*')
+hold on
+plot3(x2(1,:)',x2(2,:)',x2(3,:)','g*')
+plot3(x3(1,:)',x3(2,:)',x3(3,:)','c*')
+plot3(x4(1,:)',x4(2,:)',x4(3,:)','m*')
+title("Data Samples")
+clear x1 x2 x3 x4;
+
+% Save this dataset to use for later.
+% save('A3Q1Dataset');
+
+
+% For different number of samples, different numbers of Gaussians will be
+% used to describe it. It Depends on the number of samples, and also their
+% probability distribution.
+
+% Goal for GMM fit is to maximize the log likelihood of 1 gaussians, 
+% 2 gaussians, 3 gaussians, etc. against the data. The one that maximizes
+% the most "wins" for that particular sampling of data as the best GMM fit.
+
+
+
