@@ -360,5 +360,121 @@ load('A3Q2Dataset.mat');
 % 2 gaussians, 3 gaussians, etc. against the data. The one that maximizes
 % the most "wins" for that particular sampling of data as the best GMM fit.
 
+M = 6; % total number of gaussians to test the fit
+K = 10; % for 10-fold cross validation
+N_vector = N; % stores all the separate Ns in a vector
+numOfExperiments = 100;
+
+for exp = 1:numOfExperiments
+warns(exp).msg = [];
+    % Taken from Matlab documentation: https://www.mathworks.com/help/stats/fit-a-gaussian-mixture-model-to-data.html?searchHighlight=Gaussian%20mixture%20model%20fit&s_tid=srchtitle_Gaussian%20mixture%20model%20fit_1
+    for dsn = 1:length(N_vector) % dataset number... will be replaced with for dsn = 1:length(N)
+
+    N = N_vector(dsn);
+    x = dataset(dsn).x'; % fitgmdist likes data in columns, so this is transposed
+    idx = randperm(size(x,1),N); % randomly mix up the data 
+    x = x(idx,:);
+
+    % GMM fitting options
+    options = statset('MaxIter',2000); % can also specify 'Display','final' to show num iterations and log-likelihood
+    
+    for m = 1:M %for each model fit (number of gaussians to fit to data)
+        for i = 1:K
+            %%%--- Get Train and Validation sets ready for iteration i ---%%%
+            idxvs = ((i-1)*(N/K)+1); idxve = idxvs+(N/K)-1;
+            idxv = idxvs:idxve; % validation indices (idx) from start to end
+            XTrain = x;
+            XValidation = XTrain(idxv,:); % now that data is transposed, sample like this
+            XTrain(idxv,:) = []; % removes validation samples from train data.
+
+            % set a warning trap (reset step)
+            lastwarn('','');
+            % Fit the GMM using EM algorithm.
+            gm{m} = fitgmdist(XTrain,m,'RegularizationValue',0.01,'Options',options); % The cell {m} is overwritten in each i:K loop
+            [warnMsg,warnId] = lastwarn(); % grab to see if there is a warning here
+            % tracks error messages over the experiments.
+            if (~isempty(warnId)) % If there was a warning, store it.
+                disp('There was a warning message fitting the Gaussian mixture model');
+                warns(exp).msg = [warns(exp).msg; ...
+                    strcat("For sample size N=", num2str(N), " model fit m=", num2str(m), ", iteration ",...
+                    num2str(i), ": ", warnMsg)];
+            end
+            % Validate by calculating the log likelihood
+            % calculate the log likelihood - sampled from class EMforGMM.m script
+            alpha = gm{m}.ComponentProportion'; % mixing coefficients
+            logLikelihood(i) = sum(log(evalGMM(XValidation',alpha,gm{m}.mu',gm{m}.Sigma)));
+        end % end K-fold C.V.
+        % calculate average validation "error" for model m which is 
+        % log likelihood in this case. Maximum one of these will be the "best" fit.
+        logL(m) = sum(logLikelihood)./K;
+    end % end models
+
+    [~,bestm] = max(logL);
+    modelSel(dsn,exp) = bestm; % experiment numbers stored in columns, datasets on the rows
+
+    end % end of dsn
+
+end % end of experiments
+
+% save('A3Q2modelFitting.mat');
+
+%% Plots, data processing, re-fitting, contour and scatter plots 
+
+%%% Plot histogram of the times models were selected out of the experiments
+% (see variable modelSel)
+
+%%% Plot Scatter plots!
+% if dsn == 4
+%     scatter(x(:,1),x(:,2),15,'.') % Scatter plot with points of size 30
+% else
+% 	scatter(x(:,1),x(:,2),30,'.') % Scatter plot with points of size 30
+% end
+% title('Simulated Data')
+    
+%%% re-fit GMM several times with best model
+% for iter = 1:10
+%     gm{iter} = fitgmdist(x,bestm,'RegularizationValue',0.01,'Options',options);
+%     negLogL(iter) = gm{iter}.NegativeLogLikelihood;
+% end
+% [~,bestiter] = max(-1.*negLogL);
+% bestgm{dsn} = gm{bestiter};
+% Plot the contours
+% gmPDF = @(x,y) arrayfun(@(x0,y0) pdf(gm{m},[x0 y0]),x,y);
+% hold on
+% h = fcontour(gmPDF,[-2 5]);
+% title('Simulated Data and Contour lines of pdf');
+
+%Scatter plot of data example
+% plot(X(:,1),X(:,2),'ko')
+% title('Scatter Plot')
+% xlim([min(X(:)) max(X(:))]) % Make axes have the same scale
+% ylim([min(X(:)) max(X(:))])
 
 
+%% Utility Functions
+
+%%% Taken from class script "EMforGMM.m" ...
+function gmm = evalGMM(x,alpha,mu,Sigma)
+% EVALGMM.M - Evaluates the gmm surface (sums values of each gaussian pdf)
+% takes x as input nxN matrix where num of samples is N
+% mu is matrix of mean vectors as column vectors.
+% Sigma is 3D array of stacked nxn covariance matrices.
+gmm = zeros(1,size(x,2));
+for m = 1:length(alpha) % evaluate the GMM on the grid
+    % the following yields a 1xN vector containing the summed value of each
+    % sample in each pdf. Should -not- be normalized.
+    gmm = gmm + alpha(m)*evalGaussian(x,mu(:,m),Sigma(:,:,m)); % calls evalGaussian function (below)
+end
+end
+
+%%% Taken from class script "EMforGMM.m" ...
+function g = evalGaussian(x,mu,Sigma)
+% Evaluates the Gaussian pdf N(mu,Sigma) at each column of X
+% mu is a single column vector.
+% Sigma is an nxn covariance matrix
+[n,N] = size(x); % again x is an nxN input. n is dimension, N is num of samples
+invSigma = inv(Sigma);
+C = (2*pi)^(-n/2) * det(invSigma)^(1/2);
+E = -0.5*sum((x-repmat(mu,1,N)).*(invSigma*(x-repmat(mu,1,N))),1); % sums all the rows together leaving a 1xN vector
+g = C*exp(E); % g is a scaled 1xN vector (C is the coefficient for the complex exponential of the multivariate Gaussian pdf equation)
+end
