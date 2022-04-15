@@ -58,5 +58,5 @@ x2Grid = linspace(floor(rangex2(1)),ceil(rangex2(2)),91);
 [h,v] = meshgrid(x1Grid,x2Grid);
 GMM = evalGMM([h(:)';v(:)'],alpha, mu, Sigma);
 zGMM = reshape(GMM,91,101);
-%figure(1), contour(horizontalGrid,verticalGrid,discriminantScoreGrid,[minDSGV*[0.9,0.6,0.3],0,[0.3,0.6,0.9]*maxDSGV]); % plot equilevel contours of the discriminant function 
+figure(1), contour(horizontalGrid,verticalGrid,discriminantScoreGrid,[minDSGV*[0.9,0.6,0.3],0,[0.3,0.6,0.9]*maxDSGV]); % plot equilevel contours of the discriminant function 
 end
