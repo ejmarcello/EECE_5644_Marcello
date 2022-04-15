@@ -420,29 +420,54 @@ end % end of experiments
 
 %% Plots, data processing, re-fitting, contour and scatter plots 
 
+load('A3Q2modelFitting.mat');
 %%% Plot histogram of the times models were selected out of the experiments
 % (see variable modelSel)
+figure;
+edges = 0.5:1:6.5;
+for i = 1:4
+    subplot(2,2,i)
+    histogram(modelSel(i,:),edges);
+    title(['N=' num2str(N_vector(i))]);
+    xlabel("Number of Gaussian Components");
+    ylabel("Times Selected as Optimal");
+    axis([0 6.5 0 100]);
+    ax = gca;
+    ax.FontSize = 12;
+end
+sgtitle('Experimental Results of GMM Fitting For Sample Data of Size N','FontSize',18);
 
-%%% Plot Scatter plots!
-% if dsn == 4
-%     scatter(x(:,1),x(:,2),15,'.') % Scatter plot with points of size 30
-% else
-% 	scatter(x(:,1),x(:,2),30,'.') % Scatter plot with points of size 30
-% end
-% title('Simulated Data')
+
+%%% Plot Scatter plot!
+figure;
+dsn = 3;
+bestm = mode(modelSel(dsn,:));
+x = dataset(dsn).x';
+if dsn == 4
+    scatter(x(:,1),x(:,2),15,'.') % Scatter plot with points of size 30
+else
+	scatter(x(:,1),x(:,2),30,'.') % Scatter plot with points of size 30
+end
+title('Simulated Data')
+xlabel('x_1');
+ylabel('x_2');
     
+ 
 %%% re-fit GMM several times with best model
-% for iter = 1:10
-%     gm{iter} = fitgmdist(x,bestm,'RegularizationValue',0.01,'Options',options);
-%     negLogL(iter) = gm{iter}.NegativeLogLikelihood;
-% end
-% [~,bestiter] = max(-1.*negLogL);
-% bestgm{dsn} = gm{bestiter};
+for iter = 1:10
+    gm{iter} = fitgmdist(x,bestm,'RegularizationValue',0.01,'Options',options);
+    negLogL(iter) = gm{iter}.NegativeLogLikelihood;
+end
+[~,bestiter] = max(-1.*negLogL);
+bestgm{dsn} = gm{bestiter}; % if we wrap it over dsn we can get a best fit model for each dataset.
 % Plot the contours
-% gmPDF = @(x,y) arrayfun(@(x0,y0) pdf(gm{m},[x0 y0]),x,y);
-% hold on
-% h = fcontour(gmPDF,[-2 5]);
-% title('Simulated Data and Contour lines of pdf');
+gmPDF = @(x,y) arrayfun(@(x0,y0) pdf(gm{bestiter},[x0 y0]),x,y);
+hold on
+h = fcontour(gmPDF,[-2 5]);
+h.LineWidth = 1;
+title('Simulated Data and Contour Lines of PDF');
+ax = gca;
+ax.FontSize = 16;
 
 %Scatter plot of data example
 % plot(X(:,1),X(:,2),'ko')
