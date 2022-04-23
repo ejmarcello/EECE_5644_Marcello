@@ -1,6 +1,7 @@
 %% Assignment 4
 % Assignment4.m
-
+%
+% REQUIRES: Image Processing Toolbox
 %
 % by Ethan Marcello
 %           initialization date: 21 APR 2022
@@ -8,79 +9,46 @@
 % reusing code I wrote for Assignment 1 question 2.
 clear all; close all;
 
-% Setup: create 10k samples based on data distribution & keep track of
+% Setup: create N(i) samples based on data distribution & keep track of
 % class labels.
-N = [100 200 500 1000 2000 5000 100000]; % numbers of samples for ith dataset
-n = 3; % dimensionality of the data vector
-sep = 1.25; % Data mean separation parameter
-C = 4; % Number of classes
-gmmParameters.priors = [0.25 0.25 0.25 0.25]; % equal priors
-% Construct data means by placing them on the corners of a cube
-m1 = zeros(n,1); % mean vector for C=1. Length is same as n
-m2 = [sep 0 0]'; % mean vector for C=2
-m3 = [0 sep 0]'; % mean vector for C=3
-m4 = [0 0 sep]'; % mean vector for C=4
-gmmParameters.meanVectors = [m1 m2 m3 m4];
+N = [1000 10000]; % numbers of samples for train then test dataset(s)
+n = 2; % dimensionality of the data vector
+C = 2; % Number of classes
 
-% Now calculate Covariance matricies.
-A1 = rand(n,n);
-A2 = rand(n,n);
-A3 = rand(n,n);
-A4 = rand(n,n);
-s1 = rand()*0.3;
-s2 = rand()*0.3;
-s3 = rand()*0.3;
-s4 = rand()*0.3;
-%Sigma = (I+sA)(I+sA)' with 0<s<<1
-Cov1 = 0.2.*(eye(3)+s1.*A1)*(eye(3)+s1.*A1)';
-Cov2 = 0.2.*(eye(3)+s2.*A2)*(eye(3)+s2.*A2)';
-Cov3 = 0.2.*(eye(3)+s3.*A3)*(eye(3)+s3.*A3)';
-Cov4 = 0.2.*(eye(3)+s4.*A4)*(eye(3)+s4.*A4)';
-gmmParameters.covMatrices(:,:,1) = Cov1;
-gmmParameters.covMatrices(:,:,2) = Cov2;
-gmmParameters.covMatrices(:,:,3) = Cov3;
-gmmParameters.covMatrices(:,:,4) = Cov4;
-clear A1 A2 A3 A4 s1 s2 s3 s4;
+priors = [0.5 0.5]; % assumed class data occurs with equal probability
+r = [2 4]; % coefficient determining class r(c).
 
 for i = 1:length(N)
-      % Using class priors to generate data x
-    x1 = randGaussian(N(i)*0.25,m1,Cov1); % C=1 data, Uses randGaussian function
-    x1(:,:,2) = ones(n,N(i)*0.25); % Add label to 3rd dimension of mtx
-    x2 = randGaussian(N(i)*0.25,m2,Cov2); % C=2 data, Uses randGaussian function
-    x2(:,:,2) = 2.*ones(n,N(i)*0.25); % Add label to 3rd dimension
-    x3 = randGaussian(N(i)*0.25,m3,Cov3); % C=3 data, first gaussian model
-    x3(:,:,2) = 3.*ones(n,N(i)*0.25); % Add label to 3rd dimension
-    x4 = randGaussian(N(i)*0.25,m4,Cov4); % C=3 data, second gaussian model
-    x4(:,:,2) = 4.*ones(n,N(i)*0.25); % Add label to 3rd dimension
-
-    x = [x1(:,:,:) x2(:,:,:) x3(:,:,:) x4(:,:,:)]; 
-    % We know all C=1 data is in x1 and all C=2 data is in x2, etc.
-    labels = x(1,:,2);
-    x = x(:,:,1);
-    dataset(i).x = x;
-    dataset(i).labels = labels;
+    data(i).x = [];
+    data(i).labels = [];
+    for c = 1:C
+        Ns = N(i)*priors(c); % number of samples to generate
+        xnew = r(c).*[cos((2.*pi.*rand(1,Ns))-pi);sin((2.*pi.*rand(1,Ns))-pi)] +...
+                randGaussian(Ns,[0;0],[1 0;0 1]); %randn(2,Ns);
+        data(i).x = [data(i).x xnew];
+        data(i).labels = [data(i).labels c.*ones(1,Ns)];
+    end     
 end
 
-clear m1 m2 m3 m4 Cov1 Cov2 Cov3 Cov4;
+% class labels are "1" and "2" for "-1" and "+1" respectively.
 
-% Plot data in 3D to see level of overlap
+% Plot data in 2D to see level of overlap
 figure;
-plot3(x1(1,:)',x1(2,:)',x1(3,:)','r*')
+Nc1 = N(1)*priors(1); 
+plot(data(1).x(1,1:Nc1),data(1).x(2,1:Nc1),'r*')
 hold on
-plot3(x2(1,:)',x2(2,:)',x2(3,:)','g*')
-plot3(x3(1,:)',x3(2,:)',x3(3,:)','c*')
-plot3(x4(1,:)',x4(2,:)',x4(3,:)','m*')
+plot(data(1).x(1,Nc1+1:end),data(1).x(2,Nc1+1:end),'g*')
 title("Data Samples")
-clear x1 x2 x3 x4;
 
+clear c i Nc1 Ns xnew;
 % Save this dataset to use for later.
-% save('A3Q1Dataset');
+save('A4Q1Dataset');
 
 %% Run Theoretical classifier for Question 1
 %clear all; close all
 
 % load in data 
-load("A3Q1Dataset.mat");
+load("A4Q1Dataset.mat");
 N_vector = N;
 
 x = dataset(7).x; 
@@ -279,126 +247,98 @@ ax.YTick = 5:15;
 
 
 %% BEGIN QUESTION 2 HERE
+%clear all; close all;
 
-% Create data
-% reusing code I wrote for Assignment 1 question 2.
-clear all; close all;
+% Berkeley Segmentation Dataset: Training Image #247085 [color]
+% Image of a rough collie in tall grass with blue cloudy sky bkgnd and fence post
+I = imread('../Datasets/Collie.jpg');
+I = im2double(I); % converts to double precision and normalizes to 1
+I = imresize(I,0.25);
+%feature vectors: row index, col index, R val, G val, B val (5 features per
+%pixel)
+% MAY want to downsample image first... Seems that the GMM model fitting
+% takes quite a long time to do 10 fold Cross Validation on models with order
+% greater than 1
 
-% Setup: create samples based on data distribution & keep track of
-% class labels.
-N = [10 100 1000 10000]; % numbers of samples for ith dataset
-n = 2; % dimensionality of the data vector
-C = 4; % Number of classes/GMM components
-gmmParameters.priors = [0.2 0.1 0.3 0.4]; % different priors
-% Choose random mean vectors
-m1 = zeros(n,1); % mean vector for C=1. Length is same as n
-m2 = [2 0]'; % mean vector for C=2
-m3 = [3 3]'; % mean vector for C=3
-m4 = [0.5 2]'; % mean vector for C=4
-gmmParameters.meanVectors = [m1 m2 m3 m4];
-
-% Now calculate Covariance matricies.
-A1 = rand(n,n);
-A2 = rand(n,n);
-A3 = rand(n,n);
-A4 = rand(n,n);
-s1 = rand()*0.3;
-s2 = rand()*0.3;
-s3 = rand()*0.3;
-s4 = rand()*0.3;
-%Sigma = (I+sA)(I+sA)' with 0<s<<1
-Cov1 = 0.2.*(eye(n)+s1.*A1)*(eye(n)+s1.*A1)';
-Cov2 = 0.2.*(eye(n)+s2.*A2)*(eye(n)+s2.*A2)';
-Cov3 = 0.2.*(eye(n)+s3.*A3)*(eye(n)+s3.*A3)';
-Cov4 = 0.2.*(eye(n)+s4.*A4)*(eye(n)+s4.*A4)';
-gmmParameters.covMatrices(:,:,1) = Cov1;
-gmmParameters.covMatrices(:,:,2) = Cov2;
-gmmParameters.covMatrices(:,:,3) = Cov3;
-gmmParameters.covMatrices(:,:,4) = Cov4;
-clear A1 A2 A3 A4 s1 s2 s3 s4;
-
-for i = 1:length(N)
-    % Using class priors to generate data x
-    x = [];
-    labels = [];
-    for c = 1:length(gmmParameters.priors)
-        % C=c data, Uses randGaussian function, and concatenates new data
-        % each loop.
-        data(c).x = randGaussian(N(i)*gmmParameters.priors(c),gmmParameters.meanVectors(:,c),gmmParameters.covMatrices(:,:,c)); 
-        data(c).labels = c.*ones(1,N(i)*gmmParameters.priors(c)); % Add label for data just generated.
-        x = [x data(c).x];
-        labels = [labels data(c).labels];
+rowsize = size(I,1);
+colsize = size(I,2);
+x = zeros(5,size(I,1)*colsize); % initialize empty
+for row = 1:rowsize
+    for col = 1:colsize
+        samp = ((row-1)*colsize)+col;
+        x(:,samp) = [row col I(row,col,1) I(row,col,2) I(row,col,3)]';
     end
-
-    dataset(i).x = x;
-    dataset(i).labels = labels;
 end
+x(1,:) = x(1,:)./max(x(1,:)); % divide by the max to normalize row feature to 1
+x(2,:) = x(2,:)./max(x(2,:)); % " for column feature.
 
-clear data x labels m1 m2 m3 m4 Cov1 Cov2 Cov3 Cov4;
+clear col colsize row rowsize samp;
 
-% Plot data in 2D to see level of overlap
-figure;
-plot(dataset(3).x(1,1:200),dataset(3).x(2,1:200),'r*')
-hold on
-plot(dataset(3).x(1,201:300),dataset(3).x(2,201:300),'g*')
-plot(dataset(3).x(1,301:600),dataset(3).x(2,301:600),'c*')
-plot(dataset(3).x(1,601:1000),dataset(3).x(2,601:1000),'m*')
-title("Data Samples")
-
+n = size(x,1);
+N = size(x,2);
 % Save this dataset to use for later.
-% save('A3Q2Dataset');
+%save('A4Q2Dataset');
 
 %% GMM fitting with 10 fold Cross Validation
-clear all; close all;
+%clear all; close all;
 
-load('A3Q2Dataset.mat');
-% For different number of samples, different numbers of Gaussians will be
-% used to describe it. It Depends on the number of samples, and also their
-% probability distribution.
+%load('A4Q2Dataset.mat');
+%Fit a Gaussian Mixture Model to these normalized feature vectors representing
+%the pixels of the image. To fit the GMM, use maximum likelihood parameter 
+%estimation and 10-fold crossvalidation (with maximum average 
+%validation-log-likelihood as the objective) for model order selection.
 
 % Goal for GMM fit is to maximize the log likelihood of 1 gaussians, 
 % 2 gaussians, 3 gaussians, etc. against the data. The one that maximizes
-% the most "wins" for that particular sampling of data as the best GMM fit.
+% the most "wins" as the best GMM fit.
 
-M = 6; % total number of gaussians to test the fit
+% This code was reused from Assignment 3, but edited for the new data.
+X = x; % save untouched data in X
+M = 10; % total number of gaussians to test the fit
 K = 10; % for 10-fold cross validation
-N_vector = N; % stores all the separate Ns in a vector
-numOfExperiments = 100;
+nsamp = ceil(N/K); % number of samples to take for each iteration
+numOfExperiments = 1; % can re-run the model order selection this number of times.
+
+% preallocate space
+logL = zeros(1,M);
+logLikelihood = zeros(1,K);
+modelSel = zeros(1,numOfExperiments); 
 
 for exp = 1:numOfExperiments
-warns(exp).msg = [];
+%warns(exp).msg = [];
     % Taken from Matlab documentation: https://www.mathworks.com/help/stats/fit-a-gaussian-mixture-model-to-data.html?searchHighlight=Gaussian%20mixture%20model%20fit&s_tid=srchtitle_Gaussian%20mixture%20model%20fit_1
-    for dsn = 1:length(N_vector) % dataset number... will be replaced with for dsn = 1:length(N)
-
-    N = N_vector(dsn);
-    x = dataset(dsn).x'; % fitgmdist likes data in columns, so this is transposed
+ 
+    x = x'; % fitgmdist likes data in columns, so this is transposed
     idx = randperm(size(x,1),N); % randomly mix up the data 
     x = x(idx,:);
 
     % GMM fitting options
-    options = statset('MaxIter',2000); % can also specify 'Display','final' to show num iterations and log-likelihood
+    options = statset('MaxIter',1000,'Display','final'); % can also specify 'Display','final' to show num iterations and log-likelihood
     
-    for m = 1:M %for each model fit (number of gaussians to fit to data)
+    for m = 4:M %for each model fit (number of gaussians to fit to data)
         for i = 1:K
             %%%--- Get Train and Validation sets ready for iteration i ---%%%
-            idxvs = ((i-1)*(N/K)+1); idxve = idxvs+(N/K)-1;
+            idxvs = ((i-1)*nsamp+1); idxve = idxvs+nsamp-1;
+            if i == K % if on last iteration
+                idxve = N; % set the end to the last data sample.
+            end
             idxv = idxvs:idxve; % validation indices (idx) from start to end
             XTrain = x;
             XValidation = XTrain(idxv,:); % now that data is transposed, sample like this
             XTrain(idxv,:) = []; % removes validation samples from train data.
 
             % set a warning trap (reset step)
-            lastwarn('','');
+            %lastwarn('','');
             % Fit the GMM using EM algorithm.
             gm{m} = fitgmdist(XTrain,m,'RegularizationValue',0.01,'Options',options); % The cell {m} is overwritten in each i:K loop
-            [warnMsg,warnId] = lastwarn(); % grab to see if there is a warning here
+            %[warnMsg,warnId] = lastwarn(); % grab to see if there is a warning here
             % tracks error messages over the experiments.
-            if (~isempty(warnId)) % If there was a warning, store it.
-                disp('There was a warning message fitting the Gaussian mixture model');
-                warns(exp).msg = [warns(exp).msg; ...
-                    strcat("For sample size N=", num2str(N), " model fit m=", num2str(m), ", iteration ",...
-                    num2str(i), ": ", warnMsg)];
-            end
+%             if (~isempty(warnId)) % If there was a warning, store it.
+%                 disp('There was a warning message fitting the Gaussian mixture model');
+%                 warns(exp).msg = [warns(exp).msg; ...
+%                     strcat("For sample size N=", num2str(N), " model fit m=", num2str(m), ", iteration ",...
+%                     num2str(i), ": ", warnMsg)];
+%             end
             % Validate by calculating the log likelihood
             % calculate the log likelihood - sampled from class EMforGMM.m script
             alpha = gm{m}.ComponentProportion'; % mixing coefficients
@@ -410,48 +350,19 @@ warns(exp).msg = [];
     end % end models
 
     [~,bestm] = max(logL);
-    modelSel(dsn,exp) = bestm; % experiment numbers stored in columns, datasets on the rows
+    modelSel(exp) = bestm; % experiment numbers stored in columns, datasets on the rows
 
-    end % end of dsn
 
 end % end of experiments
 
-% save('A3Q2modelFitting.mat');
+save('A4Q2modelFitting.mat'); % only thing you need from this is the "bestm"
+                % i.e. the best model order. Determines number of segments
+                % to use in the next section.
 
 %% Plots, data processing, re-fitting, contour and scatter plots 
 
-load('A3Q2modelFitting.mat');
-%%% Plot histogram of the times models were selected out of the experiments
-% (see variable modelSel)
-figure;
-edges = 0.5:1:6.5;
-for i = 1:4
-    subplot(2,2,i)
-    histogram(modelSel(i,:),edges);
-    title(['N=' num2str(N_vector(i))]);
-    xlabel("Number of Gaussian Components");
-    ylabel("Times Selected as Optimal");
-    axis([0 6.5 0 100]);
-    ax = gca;
-    ax.FontSize = 12;
-end
-sgtitle('Experimental Results of GMM Fitting For Sample Data of Size N','FontSize',18);
-
-
-%%% Plot Scatter plot!
-figure;
-dsn = 3;
-bestm = mode(modelSel(dsn,:));
-x = dataset(dsn).x';
-if dsn == 4
-    scatter(x(:,1),x(:,2),15,'.') % Scatter plot with points of size 30
-else
-	scatter(x(:,1),x(:,2),30,'.') % Scatter plot with points of size 30
-end
-title('Simulated Data')
-xlabel('x_1');
-ylabel('x_2');
-    
+%load('A4Q2modelFitting.mat');
+%bestm = 10; % overriding work to choose number of segments you want.
  
 %%% re-fit GMM several times with best model
 for iter = 1:10
@@ -459,23 +370,46 @@ for iter = 1:10
     negLogL(iter) = gm{iter}.NegativeLogLikelihood;
 end
 [~,bestiter] = max(-1.*negLogL);
-bestgm{dsn} = gm{bestiter}; % if we wrap it over dsn we can get a best fit model for each dataset.
-% Plot the contours
-gmPDF = @(x,y) arrayfun(@(x0,y0) pdf(gm{bestiter},[x0 y0]),x,y);
-hold on
-h = fcontour(gmPDF,[-2 5]);
-h.LineWidth = 1;
-title('Simulated Data and Contour Lines of PDF');
-ax = gca;
-ax.FontSize = 16;
+bestgm = gm{bestiter}; 
 
-%Scatter plot of data example
-% plot(X(:,1),X(:,2),'ko')
-% title('Scatter Plot')
-% xlim([min(X(:)) max(X(:))]) % Make axes have the same scale
-% ylim([min(X(:)) max(X(:))])
+%%
+%%%%-----Now classify samples using bestgm-----%%%%
+% use the untouched "X"; i.e., the properly ordered one.
+if size(X,1) > size(X,2)
+    X = X';
+end
 
+gmmParameters.priors = bestgm.ComponentProportion;
+gmmParameters.meanVectors = bestgm.mu';
+gmmParameters.covMatrices = bestgm.Sigma;
 
+%%%%% MAP Classification rule with fitted data PDF %%%%%
+% gmmnum is the number of the gaussian in the mixture model.
+for gmmnum = 1:length(gmmParameters.meanVectors(1,:))
+    pxgivenl(gmmnum,:) = evalGaussianPDF(X,gmmParameters.meanVectors(:,gmmnum),gmmParameters.covMatrices(:,:,gmmnum)); % Evaluate p(x|L=GMM_number)
+end
+
+px = gmmParameters.priors*pxgivenl; % Total probability theorem
+classPosteriors = pxgivenl.*repmat(gmmParameters.priors',1,N)./repmat(px,bestm,1); % P(L=l|x)
+
+% Finally make classification decisions
+lossMatrix = ones(bestm)-eye(bestm); % For min-Perror design, use 0-1 loss
+expectedRisks = lossMatrix*classPosteriors; % Expected Risk for each label (rows) for each sample (columns)
+[~,decisions] = min(expectedRisks,[],1); % Minimum expected risk decision with 0-1 loss is the same as MAP
+
+rowsize = size(I,1);
+colsize = size(I,2);
+gray = linspace(0,1,bestm); % grayscale levels
+J = zeros(rowsize,colsize); %preallocate space for segmented image
+for row = 1:rowsize
+    for col = 1:colsize
+        samp = ((row-1)*colsize)+col;
+        J(row,col) = gray(decisions(samp)); %assign grayscale level to decisions in the image.
+    end
+end
+montage({I,J}); % displays the original (downsampled) image and the segmented one side by side.
+clear pxgivenl px classPosteriors decisions gmmParameters ...
+        expectedRisks lossMatrix
 %% Utility Functions
 
 %%% Taken from class script "EMforGMM.m" ...
