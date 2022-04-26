@@ -42,51 +42,23 @@ title("Data Samples")
 
 clear c i Nc1 Ns xnew;
 % Save this dataset to use for later.
-save('A4Q1Dataset');
+%save('A4Q1Dataset');
 
-%% Run Theoretical classifier for Question 1
-%clear all; close all
-
+%% Train MLP for Question 1
+clear all; close all;
 % load in data 
 load("A4Q1Dataset.mat");
 N_vector = N;
-
-x = dataset(7).x; 
-labels = dataset(7).labels;
-N = N_vector(7);
-
-%%% Classification with True Data PDF (benchmark)
-%%%%% MAP Classification rule with true data PDF %%%%%
-% gmmnum is the number of the gaussian in the mixture model.
-for gmmnum = 1:length(gmmParameters.meanVectors(1,:))
-    pxgivenl(gmmnum,:) = evalGaussianPDF(x,gmmParameters.meanVectors(:,gmmnum),gmmParameters.covMatrices(:,:,gmmnum)); % Evaluate p(x|L=GMM_number)
-end
-
-px = gmmParameters.priors*pxgivenl; % Total probability theorem
-classPosteriors = pxgivenl.*repmat(gmmParameters.priors',1,N)./repmat(px,C,1); % P(C=l|x)
-
-% Finally make classification decisions
-lossMatrix = ones(C)-eye(C); % For min-Perror design, use 0-1 loss
-expectedRisks = lossMatrix*classPosteriors; % Expected Risk for each label (rows) for each sample (columns)
-[~,decisions] = min(expectedRisks,[],1); % Minimum expected risk decision with 0-1 loss is the same as MAP
-
-% Find empirically estimated probability of error
-pError = sum(length(find(labels~=decisions)))/N;
-clear x labels;
-%% Creating the MLP to classify data 
-% Continues straight from "(benchmark)" section
-
 numTest = 10; % # of final MLP iterations w/ test data to ensure maximum performance.
-for dsn = 1:6 % for each dataset
     
-% dsn = 3; % choose dataset number
-x = dataset(dsn).x; % choose dataset D (xxxx samples)
-labels = dataset(dsn).labels;
-N = N_vector(dsn); % number of data samples
+
+x = data(1).x; 
+labels = data(1).labels;
+N = N_vector(1); % number of data samples
 
 % First get the test data (this is used to check for accuracy later)
-XTest = dataset(7).x'; % these are both transposed to work with deep learning tools
-YTest = dataset(7).labels';
+XTest = data(2).x'; % these are both transposed to work with deep learning tools
+YTest = data(2).labels';
 % NOW Setup the data for cross-validation by partitioning.
 XTrain = x'; % network input features
 YTrain = categorical(labels'); % network output responses (classes)
@@ -98,10 +70,12 @@ YTrain = YTrain(idx); % now data is randomly mixed around. Ready to partition.
 K = 10;
 % Structure of MLP: Only one hidden layer, one output layer
 % p = round(logspace(0,3,10)); 
-p = round(linspace(2,15,14));
+p = round(linspace(10,18,9));
 n = size(XTest,2); 
 % size of output... equal to number of classes
-C = 4;
+C = 2;
+% m = 6;
+% i = 1;
 for m = 1:length(p)
     for i = 1:K
         % if bootstrapping is desired, then ...
@@ -129,7 +103,7 @@ for m = 1:length(p)
     % classification problem, I will use data as Nxn matrix input with
     % 'responses' being an Nx1 vector of true class labels. The network will be
     % defined by the layer array 'layers' containing fullyConnected layers and
-    % softplus (smooth ReLU) activation function followed by softmax at the
+    % quadratic activation function followed by softmax at the
     % output. Finally a classification is given at the output using a
     % classification layer that minimizes cross entropy loss.
 
@@ -151,7 +125,7 @@ for m = 1:length(p)
       % cross entropy loss which is what I need.
 
     %%% specify the training options %%%
-    initialLearnRate = 0.5;
+    initialLearnRate = 0.85;
     maxEpochs = 12;
     miniBatchSize = 64;
     validationFrequency = 20;
@@ -160,12 +134,13 @@ for m = 1:length(p)
         InitialLearnRate=initialLearnRate, ...
         MaxEpochs=maxEpochs, ...
         MiniBatchSize=miniBatchSize, ...
-        Momentum=0, ...
+        Momentum=0.2, ...
         ValidationData={XValidation,YValidation}, ...
         ValidationFrequency=validationFrequency, ...
         Verbose=false, ...
         Plots='none');
 %         Plots="training-progress");
+
 
     % Train the network
     net = trainNetwork(XTraini,YTraini,layers,options);
@@ -174,9 +149,61 @@ for m = 1:length(p)
     error_mi(m,i) = 1 - (sum(YPred == YValidation)/numel(YValidation));
     end
     % Calculate the average error for each model m here.
-    error = sum(error_mi,2)./K; % yields a 14x1 vector sample-able by 'm'
+    error = sum(error_mi,2)./K; % yields a Mx1 vector sample-able by 'm' where M is the number of models tested
+    %%%%%%%%%%% MAKE PLOT %%%%%%%%%%%%
+    YPredtest = classify(net,XTest,'MiniBatchSize',miniBatchSize);
+    YPredtest = double(YPredtest); % convert to double
+    idxc = []; idxw = []; % indices of correct and wrong classifications
+    for id = 1:length(YPredtest)
+       if YPredtest(id) == data(2).labels(id)
+           idxc = [idxc id];
+       else
+           idxw = [idxw id];
+       end
+    end
+    c1 = find(idxc<=5000); w1 = find(idxw<=5000); % correct and wrong decisions for class 1
+    c2 = find(idxc>5000); w2 = find(idxw>5000); % correct and wrong decisions for class 2
+
+    figure(m);
+    plot(data(2).x(1,idxc(c2)),data(2).x(2,idxc(c2)),'g*')
+    hold on
+    plot(data(2).x(1,idxc(c1)),data(2).x(2,idxc(c1)),'c+')
+    plot(data(2).x(1,idxw(w2)),data(2).x(2,idxw(w2)),'r*')
+    plot(data(2).x(1,idxw(w1)),data(2).x(2,idxw(w1)),'y+')
+    title(['MLP Classifications With ' num2str(p(m)) ' Perceptrons'])
+    legend('Correct Class l=+1','Correct Class l=-1','Incorrect Class l=+1','Incorrect Class l=-1')
+
 end
 
+
+
+%% Test 2
+
+%---Test script section to see generated classification boundary---%
+% Or more easily I can show classification decisions...
+figure;
+Nc1 = N_vector(2)*priors(1); 
+plot(data(2).x(1,Nc1+1:end),data(2).x(2,Nc1+1:end),'g*')
+hold on
+plot(data(2).x(1,1:Nc1),data(2).x(2,1:Nc1),'c+')
+%legend('Class r_+','Class r_-')
+% create grid over entire space
+x1range = min(XTest(:,1)):.1:max(XTest(:,1));
+x2range = min(XTest(:,2)):.1:max(XTest(:,2));
+[xx1, xx2] = meshgrid(x1range,x2range);
+XGrid = [xx1(:) xx2(:)];
+
+predictedvalues = classify(net,XGrid,'MiniBatchSize',miniBatchSize);
+predictedvalues = double(predictedvalues);
+%figure;
+   gscatter(xx1(:), xx2(:), predictedvalues,'rn');
+
+   title('Classification Regions')
+   
+   axis([-8 10 -9 9])
+legend('Class l=+1','Class r=-1','Classification Region for l=-1','Location','southeast')
+
+%% Re-train chosen MLP model.
 % Now choose 'least rejectable' model
 [~,mstar] = min(error); pstar = p(mstar);
 % Train this model 10 times with random initializations and take the best result.
@@ -214,12 +241,38 @@ YPred = classify(model(i).net,XTest,'MiniBatchSize',miniBatchSize);
 model_errors(i) = 1 - (sum(YPred == categorical(YTest))/numel(YTest)); % final error
 end
 
-[besterr(dsn),bestidx] = min(model_errors);
-bestmodel(dsn).net = model(bestidx).net; % saving the best network structure based on data in dsn
-numPerceptrons(dsn) = pstar;
-clear pxgivenl classPosteriors px expectedRisks decisions error_mi ...
-    error model model_errors 
-end
+[besterr,bestidx] = min(model_errors);
+bestmodel.net = model(bestidx).net; % saving the best network structure based on data in dsn
+numPerceptrons = pstar;
+
+
+
+%% Run Theoretical classifier for Question 1
+%clear all; close all
+% x = dataset(7).x; 
+% labels = dataset(7).labels;
+% N = N_vector(7);
+% 
+% %%% Classification with True Data PDF (benchmark)
+% %%%%% MAP Classification rule with true data PDF %%%%%
+% % gmmnum is the number of the gaussian in the mixture model.
+% for gmmnum = 1:length(gmmParameters.meanVectors(1,:))
+%     pxgivenl(gmmnum,:) = evalGaussianPDF(x,gmmParameters.meanVectors(:,gmmnum),gmmParameters.covMatrices(:,:,gmmnum)); % Evaluate p(x|L=GMM_number)
+% end
+% 
+% px = gmmParameters.priors*pxgivenl; % Total probability theorem
+% classPosteriors = pxgivenl.*repmat(gmmParameters.priors',1,N)./repmat(px,C,1); % P(C=l|x)
+% 
+% % Finally make classification decisions
+% lossMatrix = ones(C)-eye(C); % For min-Perror design, use 0-1 loss
+% expectedRisks = lossMatrix*classPosteriors; % Expected Risk for each label (rows) for each sample (columns)
+% [~,decisions] = min(expectedRisks,[],1); % Minimum expected risk decision with 0-1 loss is the same as MAP
+% 
+% % Find empirically estimated probability of error
+% pError = sum(length(find(labels~=decisions)))/N;
+% clear x labels;
+%% Creating the MLP to classify data 
+% Continues straight from "(benchmark)" section
 
 %% Plotting final results for Question 1
 
@@ -314,7 +367,8 @@ for exp = 1:numOfExperiments
 
     % GMM fitting options
     options = statset('MaxIter',1000,'Display','final'); % can also specify 'Display','final' to show num iterations and log-likelihood
-    
+    % 'Start','randSample' will randomly choose K starting points for the
+    % gaussians.
     for m = 4:M %for each model fit (number of gaussians to fit to data)
         for i = 1:K
             %%%--- Get Train and Validation sets ready for iteration i ---%%%
@@ -362,7 +416,7 @@ save('A4Q2modelFitting.mat'); % only thing you need from this is the "bestm"
 %% Plots, data processing, re-fitting, contour and scatter plots 
 
 %load('A4Q2modelFitting.mat');
-%bestm = 10; % overriding work to choose number of segments you want.
+bestm = 20; % overriding work to choose number of segments you want.
  
 %%% re-fit GMM several times with best model
 for iter = 1:10
