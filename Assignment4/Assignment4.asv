@@ -34,15 +34,14 @@ end
 % class labels are "1" and "2" for "-1" and "+1" respectively.
 
 % Plot data in 2D to see level of overlap
-dsn = 2;
 figure;
-Nc1 = N(dsn)*priors(1); 
-plot(data(dsn).x(1,1:Nc1),data(dsn).x(2,1:Nc1),'r*')
+Nc1 = N(1)*priors(1); 
+plot(data(1).x(1,1:Nc1),data(1).x(2,1:Nc1),'r*')
 hold on
-plot(data(dsn).x(1,Nc1+1:end),data(dsn).x(2,Nc1+1:end),'g*')
+plot(data(1).x(1,Nc1+1:end),data(1).x(2,Nc1+1:end),'g*')
 title("Data Samples")
 
-clear c i Nc1 Ns xnew theta;
+clear c i Nc1 Ns xnew;
 % Save this dataset to use for later.
 %save('A4Q1Dataset');
 
@@ -53,6 +52,7 @@ load("A4Q1Dataset.mat");
 N_vector = N;
 numTest = 10; % # of final MLP iterations w/ test data to ensure maximum performance.
     
+
 x = data(1).x; 
 labels = data(1).labels;
 N = N_vector(1); % number of data samples
@@ -71,11 +71,12 @@ YTrain = YTrain(idx); % now data is randomly mixed around. Ready to partition.
 K = 10;
 % Structure of MLP: Only one hidden layer, one output layer
 % p = round(logspace(0,3,10)); 
-p = round(linspace(2,15,14));
+p = round(linspace(10,18,9));
 n = size(XTest,2); 
 % size of output... equal to number of classes
 C = 2;
-
+% m = 6;
+% i = 1;
 for m = 1:length(p)
     for i = 1:K
         % if bootstrapping is desired, then ...
@@ -96,6 +97,17 @@ for m = 1:length(p)
     randscale = 0.5; % arbitrarily chosen scaling factor to bring initialized parameters closer to zero.
     theta.b2 = randscale*rand(C,1); theta.W2 = randscale*rand(C,p(m)); % output layer params
     theta.b1 = randscale*rand(p(m),1); theta.W1 = randscale*rand(p(m),n); % 1st hidden layer params
+
+    %%%%%--- Deep Learning Toolbox, create custom MLP ---%%%%%
+    % Can use Deep Learning Toolbox to build a custom MLP.
+    % uses function trainNetwork() to train data. Since this is a
+    % classification problem, I will use data as Nxn matrix input with
+    % 'responses' being an Nx1 vector of true class labels. The network will be
+    % defined by the layer array 'layers' containing fullyConnected layers and
+    % quadratic activation function followed by softmax at the
+    % output. Finally a classification is given at the output using a
+    % classification layer that minimizes cross entropy loss.
+
 
     %%% now to build the network layers %%%
     layer_fc1 = fullyConnectedLayer(p(m),'Name','fc1','Weights',theta.W1,...
@@ -168,7 +180,7 @@ end
 
 
 %% Re-train chosen MLP model.
-%13 is best size
+%13 or 14
 % Now choose 'least rejectable' model
 [~,mstar] = min(error); pstar = p(mstar);
 % Train this model 10 times with random initializations and take the best result.
@@ -239,8 +251,57 @@ predictedvalues = double(predictedvalues);
    axis([-8 10 -9 9])
 legend('Class l=+1','Class l=-1','Classification Region for l=-1','Location','southeast')
 
-%% BEGIN SVM Classifier for Question 1 here
 
+%% Run Theoretical classifier for Question 1
+%clear all; close all
+% x = dataset(7).x; 
+% labels = dataset(7).labels;
+% N = N_vector(7);
+% 
+% %%% Classification with True Data PDF (benchmark)
+% %%%%% MAP Classification rule with true data PDF %%%%%
+% % gmmnum is the number of the gaussian in the mixture model.
+% for gmmnum = 1:length(gmmParameters.meanVectors(1,:))
+%     pxgivenl(gmmnum,:) = evalGaussianPDF(x,gmmParameters.meanVectors(:,gmmnum),gmmParameters.covMatrices(:,:,gmmnum)); % Evaluate p(x|L=GMM_number)
+% end
+% 
+% px = gmmParameters.priors*pxgivenl; % Total probability theorem
+% classPosteriors = pxgivenl.*repmat(gmmParameters.priors',1,N)./repmat(px,C,1); % P(C=l|x)
+% 
+% % Finally make classification decisions
+% lossMatrix = ones(C)-eye(C); % For min-Perror design, use 0-1 loss
+% expectedRisks = lossMatrix*classPosteriors; % Expected Risk for each label (rows) for each sample (columns)
+% [~,decisions] = min(expectedRisks,[],1); % Minimum expected risk decision with 0-1 loss is the same as MAP
+% 
+% % Find empirically estimated probability of error
+% pError = sum(length(find(labels~=decisions)))/N;
+% clear x labels;
+%% Creating the MLP to classify data 
+% Continues straight from "(benchmark)" section
+
+%% Plotting final results for Question 1
+
+figure;
+semilogx(N_vector(1:6),pError*ones(1,6),'r-','LineWidth',1.5);
+hold on
+semilogx(N_vector(1:6),besterr,'k-','LineWidth',1.5);
+xlabel('Number of Samples'); ylabel('Error');
+title('Empirically Estimated Classification Errors');
+legend('Theoretical Optimum','MLP Trained Optimum');
+grid on
+axis([100 10000 0.1 0.35]);
+ax = gca;
+ax.FontSize = 18;
+% Model trained with cross validation and then network was 
+
+figure;
+semilogx(N_vector(1:6),numPerceptrons,'*','MarkerSize',12,'LineWidth',1.5);
+xlabel('Number of Samples'); ylabel('Number of Perceptrons');
+title('Optimal Number of Perceptrons Used vs. Sample Size');
+grid on
+ax = gca;
+ax.FontSize = 18;
+ax.YTick = 5:15;
 
 
 %% BEGIN QUESTION 2 HERE
