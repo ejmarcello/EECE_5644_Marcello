@@ -2,9 +2,11 @@
 % Assignment4.m
 %
 % REQUIRES: Image Processing Toolbox
+%           Deep Learning Toolbox
 %
 % by Ethan Marcello
 %           initialization date: 21 APR 2022
+%           completion date: 28 APR 2022
 %% Question 1 (Data Distribution)
 % reusing code I wrote for Assignment 1 question 2.
 clear all; close all;
@@ -241,7 +243,135 @@ legend('Class l=+1','Class l=-1','Classification Region for l=-1','Location','so
 
 %% BEGIN SVM Classifier for Question 1 here
 
+load("A4Q1Dataset.mat");
+N_vector = N;
+numTest = 10; % # of final SVM training iterations w/ test data to ensure maximum performance.
+    
+x = data(1).x; 
+labels = data(1).labels;
+N = N_vector(1); % number of data samples
 
+% First get the test data (this is used to check for accuracy later)
+XTest = data(2).x'; % these are both transposed to work with SVM tools
+YTest = data(2).labels';
+% NOW Setup the data for cross-validation by partitioning.
+XTrain = x'; % network input features
+YTrain = labels'; % network output responses (classes)
+idx = randperm(size(XTrain,1),N); % mix up the data 
+XTrain = XTrain(idx,:);
+YTrain = YTrain(idx); % now data is randomly mixed around. Ready to partition.
+
+% K-fold cross validation. Determines number of attempts/data partitions.
+K = 10;
+n = size(XTest,2); 
+
+% hyperparams (how to pick these to find an optimum?)
+boxConstraint = 1;
+kernelScale = 0.1463; % determined from setting to 'auto' with boxConstraint=1
+M = 50; % number of models to try with cross validation
+% p = logspace(-5,5,M); % different model hyperparameter gains
+
+% Train kernel scale first then box constraint.
+trainparam = 2; % set this to 1 to save the best kernelSize instead.
+                % Also need to manually add it to the fitcsvm function
+                % argument.
+pks = linspace(1,25,M); % ditto
+pbc = logspace(0.1,10,M);
+%initialize
+%best_pks = 1; % 22.47 -> was 10 from logspace, final: 20.102
+%best_pbc = 1; % 50 -> was 1 from logspace (with pks also at 1) final: 4.8776
+
+
+for m = 1:M
+    for i = 1:K
+        %%-- Select Validation and Test Data for run i --%%
+        idxvs = ((i-1)*(N/K)+1); idxve = idxvs+(N/K)-1;
+        idxv = idxvs:idxve; % validation indices (idx) from start to end
+        XTraini = XTrain;
+        YTraini = YTrain;
+        XValidation = XTrain(idxv,:); % now that data is transposed, sample like this
+        XTraini(idxv,:) = []; % removes validation samples from train data.
+        YValidation = YTrain(idxv);
+        YTraini(idxv) = [];
+            % Time to train SVM. Solver defaults to SMO.
+        svm = fitcsvm(XTraini,YTraini,'BoxConstraint',boxConstraint*pbc(m),...
+                         'KernelFunction','gaussian','KernelScale',kernelScale,...
+                         'Prior','uniform','IterationLimit',2000,'ClassNames',[1 2],...
+                         'Standardize',true,'CacheSize',2000); % Train SVM!
+                     % can specify 'Kfold',10 for 10-fold Cross Validation. Creates
+                     % 10 trained models in Trained object in a cell array.
+
+        % Validation Step
+        YPredval = predict(svm,XValidation); % Gives predicted Y classifications based on svm
+
+        error_val(i) = 1 - (sum(YPredval == YValidation)/numel(YValidation)); % final error
+    end
+    error(m) = mean(error_val); % take average validation error as performance metric
+end
+[~,minp] = min(error);
+if trainparam == 1
+    best_pks = pks(minp); % 'best' kernel size parameter 
+elseif trainparam == 2
+    best_pbc = pbc(minp); % 'best' box constraint parameter
+end
+
+
+%% Get best SVM
+% re-train best model
+clear svm;
+% Check the values of best_pbc and best_pks before running this to see if
+% they make sense.
+% params = [.001 1 1000 1 1 1; 1 1 1 0.1 1 10];
+
+for i = 1:numTest
+% for i = 1:size(params,2)
+    svm{i} = fitcsvm(XTrain,YTrain,'BoxConstraint',boxConstraint*best_pbc,...
+                         'KernelFunction','gaussian','KernelScale',kernelScale*best_pks,...
+                         'Prior','uniform','IterationLimit',2000,'ClassNames',[1 2],...
+                         'Standardize',true,'CacheSize',2000); % Train SVM!
+%     svm{i} = fitcsvm(XTrain,YTrain,'BoxConstraint',boxConstraint*best_pbc,...
+%                          'KernelFunction','gaussian','KernelScale',kernelScale*best_pks,...
+%                          'Prior','uniform','IterationLimit',2000,'ClassNames',[1 2],...
+%                          'Standardize',true,'CacheSize',2000); % Train SVM!
+    % Check Performance
+    YPredperf = predict(svm{i},XTest); % Gives predicted Y classifications based on svm
+
+    error_perf(i) = 1 - (sum(YPredperf == YTest)/numel(YTest)); % final error
+end
+[minerrSVM,besti] = min(error_perf);
+finalSVM = svm{besti};
+
+%% Plot classification boundary
+
+figure;
+% for i = 1:length(svm)
+svmplt = finalSVM;
+% svmplt = svm{i};
+% Predict scores over the grid
+d = 0.02; % grid step size
+[x1Grid,x2Grid] = meshgrid(min(XTest(:,1)):d:max(XTest(:,1)),...
+    min(XTest(:,2)):d:max(XTest(:,2)));
+xGrid = [x1Grid(:),x2Grid(:)];
+[~,scores] = predict(svmplt,xGrid);
+
+% Plot the data and the decision boundary
+% figure;
+% hdl(i) = subplot(2,3,i);
+h(1:2) = gscatter(XTest(:,1),XTest(:,2),YTest,'rb','.',5,'off');
+hold on
+%ezpolar(@(x)1);
+%h(3) = plot(data3(svm.IsSupportVector,1),data3(svm.IsSupportVector,2),'ko');
+contour(x1Grid,x2Grid,reshape(scores(:,2),size(x1Grid)),[0 0],'k',...
+            'LineWidth',2);
+%legend(h,{'-1','+1','Support Vectors'});
+legend({'Class l=-1','Class l=+1','Classification Boundary'},...
+            'Location','southeast');
+title('SVM Classification of Test Data');
+axis equal
+hold off
+ax = gca;
+ax.FontSize = 16;
+% end
 
 %% BEGIN QUESTION 2 HERE
 %clear all; close all;
